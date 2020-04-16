@@ -24,25 +24,26 @@ import Data.Functor.Compose
 import Data.Functor.Const
 import Data.Functor.Identity
 import Data.Functor.Product
+import Data.Kind (Type)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Monoid (Alt (..))
 import Data.Proxy
 import Data.Semigroup (Arg (..))
-import Language.Haskell.TH
+import Language.Haskell.TH hiding (Type)
 import Text.ParserCombinators.ReadP (ReadP)
 import Text.ParserCombinators.ReadPrec (ReadPrec)
 
 -- | Laws if @'Functor' f@:
 --
 -- * @'liftBase' . 'fmap' f = 'fmap' f . 'liftBase'@
-class Basic1 (f :: α -> *) where
-    type Base f :: α -> *
+class Basic1 (f :: α -> Type) where
+    type Base f :: α -> Type
     liftBase :: Base f a -> f a
 
 $(let f :: Int -> Name -> Q Dec
       f n name =
           [InstanceD Nothing [] (ConT ''Basic1 `AppT` t)
-           [TySynInstD ''Base $ TySynEqn [t] t,
+           [TySynInstD $ TySynEqn Nothing (ConT ''Base `AppT` t) t,
             ValD (VarP 'liftBase) (NormalB (VarE 'id)) []]
             | t <- foldl' AppT (ConT name) <$> replicateM n (VarT <$> newName "a")]
   in traverse (uncurry f) [(0, ''IO), (1, ''L.ST), (1, ''S.ST), (0, ''STM),
@@ -71,7 +72,7 @@ instance (Basic1 f, Basic1 g, Base f ~ Base g) => Basic1 (Product f g) where
 $(let f :: Int -> Name -> Q Dec
       f n name = 
           [InstanceD Nothing [ConT ''Basic1 `AppT` f, ConT ''Monad `AppT` f] (ConT ''Basic1 `AppT` AppT t f)
-           [TySynInstD ''Base $ TySynEqn [AppT t f] (ConT ''Base `AppT` f),
+           [TySynInstD $ TySynEqn Nothing (ConT ''Base `AppT` AppT t f) (ConT ''Base `AppT` f),
             ValD (VarP 'liftBase) (NormalB (foldl' AppE (VarE '(.)) (VarE <$> ['lift, 'liftBase]))) []]
             | t <- foldl' AppT (ConT name) <$> replicateM n (VarT <$> newName "a")
             , f <- VarT <$> newName "f"]
